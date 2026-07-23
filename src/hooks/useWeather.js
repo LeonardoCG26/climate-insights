@@ -1,10 +1,11 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
+  ApiError,
   getWeatherBundle,
-  isWeatherApiConfigured,
   reverseGeocode,
   searchLocations,
 } from '../services/weatherApi.js'
+import { getCopy } from '../content/siteCopy.js'
 
 const FAVORITES_STORAGE_KEY = 'climate-insights:favorites'
 const DEFAULT_CITY = 'Mexico City'
@@ -27,25 +28,29 @@ function loadFavorites() {
   }
 }
 
+function toErrorCode(error) {
+  return error instanceof ApiError ? error.code : 'unexpected'
+}
+
 async function resolveLocationFromQuery(query) {
   const matches = await searchLocations(query)
 
   if (!matches.length) {
-    throw new Error('No encontramos esa ciudad. Intenta con ciudad y país.')
+    throw new ApiError('cityNotFound')
   }
 
   return matches[0]
 }
 
-async function resolveLocationFromCoords() {
+async function resolveLocationFromCoords(fallbackName) {
   if (!navigator.geolocation) {
-    throw new Error('Tu navegador no soporta geolocalización.')
+    throw new ApiError('geolocationUnavailable')
   }
 
   const coords = await new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
       ({ coords: position }) => resolve(position),
-      () => reject(new Error('No fue posible obtener tu ubicación.')),
+      () => reject(new ApiError('geolocationFailed')),
       {
         enableHighAccuracy: true,
         timeout: 10000,
@@ -60,7 +65,7 @@ async function resolveLocationFromCoords() {
   }
 
   return {
-    name: 'Ubicación actual',
+    name: fallbackName,
     lat: coords.latitude,
     lon: coords.longitude,
     country: '',
@@ -76,7 +81,6 @@ export function useWeather(language) {
   const [favorites, setFavorites] = useState(loadFavorites)
   const bootstrapped = useRef(false)
   const previousLanguage = useRef(language)
-  const apiConfigured = isWeatherApiConfigured()
 
   useEffect(() => {
     try {
@@ -87,16 +91,6 @@ export function useWeather(language) {
   }, [favorites])
 
   async function runRequest(setter, request) {
-    if (!apiConfigured) {
-      setter({
-        status: 'error',
-        data: null,
-        error: 'Configura VITE_OPENWEATHER_API_KEY antes de consultar el clima.',
-        lastRequest: request,
-      })
-      return null
-    }
-
     setter((previous) => ({
       ...previous,
       status: 'loading',
@@ -105,11 +99,12 @@ export function useWeather(language) {
     }))
 
     try {
+      const fallbackName = getCopy(language).current.currentLocation
       const location =
         request.type === 'location'
           ? request.value
           : request.type === 'coords'
-            ? await resolveLocationFromCoords()
+            ? await resolveLocationFromCoords(fallbackName)
             : await resolveLocationFromQuery(request.value)
 
       const bundle = await getWeatherBundle(location, { language })
@@ -129,7 +124,7 @@ export function useWeather(language) {
       setter({
         status: 'error',
         data: null,
-        error: error instanceof Error ? error.message : 'Ocurrió un error inesperado.',
+        error: toErrorCode(error),
         lastRequest: request,
       })
 
@@ -160,13 +155,13 @@ export function useWeather(language) {
   })
 
   useEffect(() => {
-    if (!apiConfigured || bootstrapped.current) {
+    if (bootstrapped.current) {
       return
     }
 
     bootstrapped.current = true
     bootstrapPrimary()
-  }, [apiConfigured])
+  }, [])
 
   useEffect(() => {
     if (previousLanguage.current === language) {
@@ -184,7 +179,7 @@ export function useWeather(language) {
       setPrimary({
         status: 'error',
         data: null,
-        error: 'Escribe una ciudad antes de buscar.',
+        error: 'emptyCity',
         lastRequest: null,
       })
       return
@@ -201,7 +196,7 @@ export function useWeather(language) {
       setComparison({
         status: 'error',
         data: null,
-        error: 'Escribe una ciudad para comparar.',
+        error: 'emptyCompare',
         lastRequest: null,
       })
       return
@@ -262,7 +257,6 @@ export function useWeather(language) {
   }
 
   return {
-    apiConfigured,
     primary,
     comparison,
     favorites,

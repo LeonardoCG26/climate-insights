@@ -13,14 +13,33 @@ npm install
 2. Crea tu archivo `.env` a partir de `.env.example`:
 
 ```bash
-VITE_OPENWEATHER_API_KEY=tu_api_key
+OPENWEATHER_API_KEY=tu_api_key
 ```
+
+   > La clave es **server-side**: la usa el proxy `/api/openweather` (serverless en
+   > producción, middleware de Vite en dev) y nunca se incluye en el bundle del
+   > navegador. No uses el prefijo `VITE_`.
 
 3. Ejecuta el entorno local:
 
 ```bash
 npm run dev
 ```
+
+4. Otros comandos:
+
+```bash
+npm run build   # build de producción
+npm run lint    # ESLint
+npm test        # unit tests (Vitest)
+```
+
+## Despliegue
+
+En producción, define `OPENWEATHER_API_KEY` en las variables de entorno del
+proyecto (p. ej. Vercel). La función `api/openweather.js` la lee del lado del
+servidor. Un despliegue existente que aún tenga `VITE_OPENWEATHER_API_KEY`
+seguirá funcionando (el proxy acepta ambos nombres como respaldo).
 
 ## Features
 
@@ -36,11 +55,15 @@ npm run dev
 ## Estructura
 
 ```text
+api/
+  _openweather.js      # helper compartido (endpoints permitidos + key)
+  openweather.js       # proxy serverless (Vercel)
 src/
   components/
   hooks/useWeather.js
   pages/WeatherPage.jsx
   services/weatherApi.js
+  services/weatherApi.test.js
 ```
 
 ## Qué vende este proyecto

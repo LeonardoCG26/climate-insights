@@ -1,43 +1,53 @@
-const API_BASE_URL = 'https://api.openweathermap.org'
+const PROXY_PATH = '/api/openweather'
 const DEFAULT_LANG = 'en'
 const DEFAULT_UNITS = 'metric'
 
-function getApiKey() {
-  return import.meta.env.VITE_OPENWEATHER_API_KEY?.trim() ?? ''
-}
+const WEATHER_TTL = 10 * 60 * 1000 // 10 min
+const SEARCH_TTL = 30 * 60 * 1000 // 30 min
 
-function ensureApiKey() {
-  if (!getApiKey()) {
-    throw new Error('Falta VITE_OPENWEATHER_API_KEY en tu archivo .env.')
+// Error carrying a stable code (a key in siteCopy's `errors` dictionary), so the
+// UI can localize it without matching on message text.
+export class ApiError extends Error {
+  constructor(code) {
+    super(code)
+    this.name = 'ApiError'
+    this.code = code
   }
 }
+
+function createTtlCache(ttl) {
+  const store = new Map()
+
+  return {
+    get(key) {
+      const entry = store.get(key)
+
+      if (!entry) {
+        return undefined
+      }
+
+      if (Date.now() > entry.expires) {
+        store.delete(key)
+        return undefined
+      }
+
+      return entry.value
+    },
+    set(key, value) {
+      store.set(key, { value, expires: Date.now() + ttl })
+    },
+  }
+}
+
+const weatherCache = createTtlCache(WEATHER_TTL)
+const searchCache = createTtlCache(SEARCH_TTL)
 
 function capitalize(text = '') {
   if (!text) {
-    return 'Sin datos'
+    return ''
   }
 
   return text.charAt(0).toUpperCase() + text.slice(1)
-}
-
-function formatApiError(message, fallbackMessage) {
-  const value = (message ?? '').trim()
-
-  if (!value) {
-    return fallbackMessage
-  }
-
-  const normalized = value.toLowerCase()
-
-  if (normalized.includes('invalid api key')) {
-    return 'OpenWeather rechazo la API key. Las claves nuevas pueden tardar unos minutos en activarse.'
-  }
-
-  if (normalized.includes('nothing to geocode')) {
-    return 'Escribe una ciudad valida para buscar.'
-  }
-
-  return capitalize(value)
 }
 
 function getLocale(language) {
@@ -74,16 +84,11 @@ function createFormatters(language) {
   }
 }
 
-function createUrl(pathname, params) {
-  ensureApiKey()
+function buildProxyUrl(endpoint, params) {
+  const url = new URL(PROXY_PATH, window.location.origin)
+  url.searchParams.set('endpoint', endpoint)
 
-  const url = new URL(pathname, API_BASE_URL)
-  const entries = {
-    ...params,
-    appid: getApiKey(),
-  }
-
-  Object.entries(entries).forEach(([key, value]) => {
+  Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       url.searchParams.set(key, String(value))
     }
@@ -92,12 +97,41 @@ function createUrl(pathname, params) {
   return url
 }
 
-async function requestJson(pathname, params, fallbackMessage) {
-  const response = await fetch(createUrl(pathname, params))
+function resolveErrorCode(payload, status, fallbackCode) {
+  if (payload?.code === 'missing_key') {
+    return 'missingApiKey'
+  }
+
+  if (payload?.code === 'upstream_error') {
+    return 'upstream'
+  }
+
+  const message = String(payload?.message ?? '').toLowerCase()
+
+  if (status === 401 || message.includes('invalid api key')) {
+    return 'invalidApiKey'
+  }
+
+  if (message.includes('nothing to geocode')) {
+    return 'queryInvalid'
+  }
+
+  return fallbackCode
+}
+
+async function requestJson(endpoint, params, fallbackCode) {
+  let response
+
+  try {
+    response = await fetch(buildProxyUrl(endpoint, params))
+  } catch {
+    throw new ApiError('upstream')
+  }
+
   const payload = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    throw new Error(formatApiError(payload.message, fallbackMessage))
+    throw new ApiError(resolveErrorCode(payload, response.status, fallbackCode))
   }
 
   return payload
@@ -114,7 +148,7 @@ export function formatLocationLabel(location) {
 export function normalizeLocation(location) {
   const normalized = {
     id: location.id ?? createLocationId(location.lat, location.lon),
-    name: location.name ?? 'Ubicación actual',
+    name: location.name ?? '',
     state: location.state ?? '',
     country: location.country ?? '',
     lat: Number(location.lat),
@@ -149,7 +183,7 @@ function pickRepresentativeForecastEntry(group) {
   }, group[0])
 }
 
-function summarizeDailyForecast(entries, formatters) {
+export function summarizeDailyForecast(entries, formatters) {
   const groups = entries.reduce((collection, entry) => {
     const dateKey = entry.dt_txt.slice(0, 10)
     collection[dateKey] ??= []
@@ -193,7 +227,7 @@ function createTimeline(entries, formatters) {
   }))
 }
 
-function resolveWeatherScene(weather = {}) {
+export function resolveWeatherScene(weather = {}) {
   const group = String(weather.main ?? '').toLowerCase()
 
   if (group === 'thunderstorm') {
@@ -238,8 +272,8 @@ function normalizeWeatherBundle(location, currentPayload, forecastPayload, langu
   const weather = currentPayload.weather?.[0] ?? {}
   const resolvedLocation = normalizeLocation({
     ...location,
-    name: location.name ?? currentPayload.name ?? 'Ubicación actual',
-    country: location.country ?? currentPayload.sys?.country ?? '',
+    name: location.name || currentPayload.name || '',
+    country: location.country || currentPayload.sys?.country || '',
   })
 
   return {
@@ -269,10 +303,6 @@ function normalizeWeatherBundle(location, currentPayload, forecastPayload, langu
   }
 }
 
-export function isWeatherApiConfigured() {
-  return Boolean(getApiKey())
-}
-
 export async function searchLocations(query, limit = 5) {
   const value = query.trim()
 
@@ -280,49 +310,49 @@ export async function searchLocations(query, limit = 5) {
     return []
   }
 
-  const payload = await requestJson(
-    '/geo/1.0/direct',
-    { q: value, limit },
-    'No se pudo buscar esa ciudad.'
-  )
+  const cacheKey = `${value.toLowerCase()}:${limit}`
+  const cached = searchCache.get(cacheKey)
 
-  return payload.map((location) => normalizeLocation(location))
+  if (cached) {
+    return cached
+  }
+
+  const payload = await requestJson('geo/direct', { q: value, limit }, 'searchFailed')
+  const results = payload.map((location) => normalizeLocation(location))
+  searchCache.set(cacheKey, results)
+
+  return results
 }
 
 export async function reverseGeocode(lat, lon, limit = 1) {
-  const payload = await requestJson(
-    '/geo/1.0/reverse',
-    { lat, lon, limit },
-    'No se pudo resolver tu ubicación.'
-  )
-
+  const payload = await requestJson('geo/reverse', { lat, lon, limit }, 'locationFailed')
   return payload.map((location) => normalizeLocation(location))
 }
 
 export async function getWeatherBundle(location, { language = DEFAULT_LANG } = {}) {
   const target = normalizeLocation(location)
+  const cacheKey = `${target.id}:${language}`
+  const cached = weatherCache.get(cacheKey)
+
+  if (cached) {
+    return cached
+  }
+
   const [currentPayload, forecastPayload] = await Promise.all([
     requestJson(
-      '/data/2.5/weather',
-      {
-        lat: target.lat,
-        lon: target.lon,
-        units: DEFAULT_UNITS,
-        lang: language,
-      },
-      'No se pudo cargar el clima actual.'
+      'weather',
+      { lat: target.lat, lon: target.lon, units: DEFAULT_UNITS, lang: language },
+      'weatherFailed'
     ),
     requestJson(
-      '/data/2.5/forecast',
-      {
-        lat: target.lat,
-        lon: target.lon,
-        units: DEFAULT_UNITS,
-        lang: language,
-      },
-      'No se pudo cargar el pronóstico.'
+      'forecast',
+      { lat: target.lat, lon: target.lon, units: DEFAULT_UNITS, lang: language },
+      'forecastFailed'
     ),
   ])
 
-  return normalizeWeatherBundle(target, currentPayload, forecastPayload, language)
+  const bundle = normalizeWeatherBundle(target, currentPayload, forecastPayload, language)
+  weatherCache.set(cacheKey, bundle)
+
+  return bundle
 }

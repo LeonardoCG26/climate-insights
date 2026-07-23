@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { searchLocations } from '../services/weatherApi.js'
+import { ApiError, searchLocations } from '../services/weatherApi.js'
 
 function createSuggestionState() {
   return {
@@ -60,8 +60,7 @@ export function useCitySuggestions(
           query: deferredQuery,
           status: 'error',
           suggestions: [],
-          error:
-            error instanceof Error ? error.message : 'No se pudieron cargar sugerencias ahora.',
+          error: error instanceof ApiError ? error.code : 'unexpected',
         })
       }
     }, delayMs)

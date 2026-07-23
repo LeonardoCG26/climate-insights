@@ -21,17 +21,22 @@ function buildPolyline(data, key, width, height, padding) {
     .join(' ')
 }
 
-function ChartCard({ chart, data }) {
+function ChartCard({ chart, data, labels }) {
   const width = 340
   const height = 180
   const points = buildPolyline(data, chart.key, width, height, 18)
+  const values = data.map((item) => item[chart.key]).filter(Number.isFinite)
   const first = data[0]?.[chart.key]
   const last = data.at(-1)?.[chart.key]
+  const min = values.length ? Math.min(...values) : 0
+  const max = values.length ? Math.max(...values) : 0
   const delta =
     Number.isFinite(first) && Number.isFinite(last) ? Number((last - first).toFixed(1)) : 0
+  const summary = `${chart.label}: ${min}${chart.unit} ${labels.min}, ${max}${chart.unit} ${labels.max}, ${last}${chart.unit} ${labels.now}`
 
   return (
     <article className="chart-card">
+      <p className="sr-only">{summary}</p>
       <div className="chart-copy">
         <div>
           <p className="eyebrow">{chart.label}</p>
@@ -52,9 +57,8 @@ function ChartCard({ chart, data }) {
       </div>
 
       <svg
-        aria-label={`${chart.label} timeline`}
+        aria-hidden="true"
         className="chart-svg"
-        role="img"
         viewBox={`0 0 ${width} ${height}`}
       >
         <polyline
@@ -117,7 +121,7 @@ function WeatherCharts({ data, labels }) {
 
       <div className="charts-grid">
         {charts.map((chart) => (
-          <ChartCard chart={chart} data={data} key={chart.key} />
+          <ChartCard chart={chart} data={data} key={chart.key} labels={labels} />
         ))}
       </div>
     </section>

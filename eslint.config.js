@@ -26,4 +26,11 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    // Server-side proxy, build config, and tests run in Node.
+    files: ['api/**/*.js', 'vite.config.js', '**/*.test.{js,jsx}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])

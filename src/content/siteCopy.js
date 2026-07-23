@@ -25,7 +25,7 @@ const copy = {
       eyebrow: 'Configuration',
       title: 'Add your API key',
       text:
-        'Create a .env file with VITE_OPENWEATHER_API_KEY=your_api_key. The project is already wired for geocoding, current weather, forecast, and autocomplete.',
+        'Set OPENWEATHER_API_KEY in your environment (.env for local dev, project settings in production). The key stays server-side and is never exposed to the browser.',
     },
     search: {
       primaryTitle: 'Main city',
@@ -54,6 +54,7 @@ const copy = {
     },
     current: {
       title: 'Current weather',
+      currentLocation: 'Current location',
       baseTitle: 'Base city',
       compareTitle: 'Compared city',
       save: 'Save',
@@ -79,6 +80,9 @@ const copy = {
       eyebrow: 'Trends',
       title: 'Next hours',
       empty: 'There are not enough points to draw the chart yet.',
+      min: 'min',
+      max: 'max',
+      now: 'now',
       items: {
         temp: 'Temperature',
         humidity: 'Humidity',
@@ -98,7 +102,7 @@ const copy = {
       compare: 'Compare',
     },
     errors: {
-      missingApiKey: 'Add VITE_OPENWEATHER_API_KEY before requesting weather data.',
+      missingApiKey: 'The weather service is not configured on the server.',
       invalidApiKey:
         'OpenWeather rejected the API key. New keys can take a few minutes to activate.',
       emptyCity: 'Type a valid city before searching.',
@@ -107,6 +111,11 @@ const copy = {
       geolocationUnavailable: 'Your browser does not support geolocation.',
       geolocationFailed: 'Could not access your location.',
       queryInvalid: 'Type a valid city to search.',
+      searchFailed: 'We could not search for that city.',
+      locationFailed: 'We could not resolve your location.',
+      weatherFailed: 'We could not load the current weather.',
+      forecastFailed: 'We could not load the forecast.',
+      upstream: 'The weather service is temporarily unavailable.',
       unexpected: 'Something went wrong. Try again.',
     },
   },
@@ -136,7 +145,7 @@ const copy = {
       eyebrow: 'Configuración',
       title: 'Agrega tu API key',
       text:
-        'Crea un archivo .env con VITE_OPENWEATHER_API_KEY=tu_api_key. El proyecto ya está preparado para geocoding, clima actual, pronóstico y autocomplete.',
+        'Configura OPENWEATHER_API_KEY en tu entorno (.env en local, ajustes del proyecto en producción). La clave vive en el servidor y nunca se expone al navegador.',
     },
     search: {
       primaryTitle: 'Ciudad principal',
@@ -166,6 +175,7 @@ const copy = {
     },
     current: {
       title: 'Clima actual',
+      currentLocation: 'Ubicación actual',
       baseTitle: 'Ciudad base',
       compareTitle: 'Ciudad comparada',
       save: 'Guardar',
@@ -191,6 +201,9 @@ const copy = {
       eyebrow: 'Tendencias',
       title: 'Próximas horas',
       empty: 'Todavía no hay suficientes puntos para dibujar la gráfica.',
+      min: 'mín',
+      max: 'máx',
+      now: 'ahora',
       items: {
         temp: 'Temperatura',
         humidity: 'Humedad',
@@ -210,7 +223,7 @@ const copy = {
       compare: 'Comparar',
     },
     errors: {
-      missingApiKey: 'Agrega VITE_OPENWEATHER_API_KEY antes de consultar el clima.',
+      missingApiKey: 'El servicio de clima no está configurado en el servidor.',
       invalidApiKey:
         'OpenWeather rechazó la API key. Las claves nuevas pueden tardar unos minutos en activarse.',
       emptyCity: 'Escribe una ciudad válida antes de buscar.',
@@ -219,52 +232,23 @@ const copy = {
       geolocationUnavailable: 'Tu navegador no soporta geolocalización.',
       geolocationFailed: 'No fue posible obtener tu ubicación.',
       queryInvalid: 'Escribe una ciudad válida para buscar.',
+      searchFailed: 'No se pudo buscar esa ciudad.',
+      locationFailed: 'No se pudo resolver tu ubicación.',
+      weatherFailed: 'No se pudo cargar el clima actual.',
+      forecastFailed: 'No se pudo cargar el pronóstico.',
+      upstream: 'El servicio de clima no está disponible por el momento.',
       unexpected: 'Ocurrió un error inesperado. Intenta otra vez.',
     },
   },
 }
 
-const errorMatchers = [
-  ['configura vite_openweather_api_key', 'missingApiKey'],
-  ['add vite_openweather_api_key', 'missingApiKey'],
-  ['openweather rechazo la api key', 'invalidApiKey'],
-  ['openweather rejected the api key', 'invalidApiKey'],
-  ['invalid api key', 'invalidApiKey'],
-  ['escribe una ciudad antes de buscar', 'emptyCity'],
-  ['type a valid city before searching', 'emptyCity'],
-  ['escribe una ciudad para comparar', 'emptyCompare'],
-  ['type a city before comparing', 'emptyCompare'],
-  ['no encontramos esa ciudad', 'cityNotFound'],
-  ['we could not find that city', 'cityNotFound'],
-  ['tu navegador no soporta geolocalizacion', 'geolocationUnavailable'],
-  ['your browser does not support geolocation', 'geolocationUnavailable'],
-  ['no fue posible obtener tu ubicacion', 'geolocationFailed'],
-  ['could not access your location', 'geolocationFailed'],
-  ['escribe una ciudad valida para buscar', 'queryInvalid'],
-  ['type a valid city to search', 'queryInvalid'],
-  ['ocurrio un error inesperado', 'unexpected'],
-  ['something went wrong', 'unexpected'],
-]
-
 export function getCopy(language) {
   return copy[language] ?? copy.en
 }
 
-export function translateErrorMessage(message, language) {
-  const value = (message ?? '').trim()
-
-  if (!value) {
-    return value
-  }
-
+// Errors are carried as stable codes (keys of the `errors` dictionary), so we
+// look them up directly. Unknown codes fall back to a generic message.
+export function translateErrorMessage(code, language) {
   const dictionary = getCopy(language).errors
-  const normalized = value.toLowerCase()
-
-  for (const [needle, key] of errorMatchers) {
-    if (normalized.includes(needle)) {
-      return dictionary[key]
-    }
-  }
-
-  return value
+  return dictionary[code] ?? dictionary.unexpected
 }

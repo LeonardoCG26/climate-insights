@@ -12,7 +12,7 @@ function clamp(value, min, max) {
 }
 
 function StatDelta({ label, value, unit }) {
-  const amount = Number.isFinite(value) ? `${value > 0 ? '+' : ''}${value}${unit}` : 'Sin datos'
+  const amount = Number.isFinite(value) ? `${value > 0 ? '+' : ''}${value}${unit}` : '—'
   const tone =
     value > 0 ? 'trend trend-warm' : value < 0 ? 'trend trend-cool' : 'trend trend-neutral'
 
@@ -149,7 +149,6 @@ function WeatherPage({ language, theme, onToggleLanguage, onToggleTheme }) {
   const parallaxFrameRef = useRef(0)
   const copy = getCopy(language)
   const {
-    apiConfigured,
     primary,
     comparison,
     favorites,
@@ -238,9 +237,9 @@ function WeatherPage({ language, theme, onToggleLanguage, onToggleTheme }) {
     if (primary.status !== 'success') {
       return (
         <FeedbackPanel
-          actionLabel={apiConfigured ? copy.search.useLocation : undefined}
-          description={apiConfigured ? copy.panels.primaryEmpty : copy.panels.missingKey}
-          onAction={apiConfigured ? loadPrimaryByCoords : undefined}
+          actionLabel={copy.search.useLocation}
+          description={copy.panels.primaryEmpty}
+          onAction={loadPrimaryByCoords}
           title={copy.panels.empty}
         />
       )
@@ -360,18 +359,10 @@ function WeatherPage({ language, theme, onToggleLanguage, onToggleTheme }) {
         </div>
       </section>
 
-      {!apiConfigured ? (
-        <section className="panel config-panel motion-panel motion-panel-2">
-          <p className="eyebrow">{copy.config.eyebrow}</p>
-          <h2>{copy.config.title}</h2>
-          <p>{copy.config.text}</p>
-        </section>
-      ) : null}
-
       <section className="search-grid">
         <WeatherSearch
           description={copy.search.primaryDescription}
-          enableAutocomplete={apiConfigured}
+          enableAutocomplete
           enableLocation
           labels={copy.search}
           language={language}
@@ -387,7 +378,7 @@ function WeatherPage({ language, theme, onToggleLanguage, onToggleTheme }) {
 
         <WeatherSearch
           description={copy.search.compareDescription}
-          enableAutocomplete={apiConfigured}
+          enableAutocomplete
           labels={copy.search}
           language={language}
           loading={comparison.status === 'loading'}
